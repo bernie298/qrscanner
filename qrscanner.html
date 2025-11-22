@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>EVE LFP MB31 – QR Scanner (Advanced)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- ZXing library voor QR/barcode scanning -->
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: dark;
+    }
+
+    body {
+      margin: 0;
+      padding: 1rem;
+      background: #020617;
+      color: #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .app {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin: 0;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 1rem;
+      padding: 1rem;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .badge, .pill {
+      font-size: 0.8rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #cbd5f5;
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    .controls, .batch-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      align-items: center;
+    }
+
+    button {
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: rgba(30, 64, 175, 0.3);
+      color: #e5e7eb;
+      padding: 0.5rem 0.9rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: background 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background: rgba(59, 130, 246, 0.45);
+      box-shadow: 0 8px 25px rgba(37, 99, 235, 0.35);
+      transform: translateY(-1px);
+    }
+
+    button.secondary {
+      background: rgba(15, 23, 42, 0.7);
+    }
+
+    button.danger {
+      background: rgba(127, 29, 29, 0.8);
+      border-color: rgba(248, 113, 113, 0.8);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .status {
+      font-size: 0.9rem;
+      margin-top: 0.4rem;
+      color: #a5b4fc;
+    }
+
+    .status strong {
+      color: #fbbf24;
+    }
+
+    .status.ok {
+      color: #4ade80;
+    }
+
+    .status.error {
+      color: #fca5a5;
+    }
+
+    .status.warn {
+      color: #fbbf24;
+    }
+
+    .video-wrapper {
+      position: relative;
+      border-radius: 1rem;
+      overflow: hidden;
+      max-height: 320px;
+      background: radial-gradient(circle at top, #1d4ed8, transparent 50%),
+                  radial-gradient(circle at bottom, #0f766e, transparent 55%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+
+    .overlay {
+      position: absolute;
+      border: 2px solid rgba(248, 250, 252, 0.8);
+      border-radius: 1rem;
+      width: 70%;
+      height: 60%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 0 100vmax rgba(15, 23, 42, 0.6);
+      pointer-events: none;
+    }
+
+    .overlay::before {
+      content: "";
+      position: absolute;
+      left: 10%;
+      right: 10%;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #22c55e, transparent);
+      opacity: 0.9;
+      animation: scanline 2s linear infinite;
+    }
+
+    @keyframes scanline {
+      0% { opacity: 0.1; }
+      50% { opacity: 1; }
+      100% { opacity: 0.1; }
+    }
+
+    .table-wrapper {
+      max-height: 320px;
+      overflow: auto;
+      border-radius: 0.75rem;
+      border: 1px solid rgba(51, 65, 85, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    thead {
+      position: sticky;
+      top: 0;
+      background: rgba(15, 23, 42, 0.98);
+      z-index: 1;
+    }
+
+    th, td {
+      padding: 0.4rem 0.6rem;
+      text-align: left;
+      border-bottom: 1px solid rgba(30, 41, 59, 0.8);
+      white-space: nowrap;
+    }
+
+    th {
+      font-weight: 600;
+      color: #cbd5f5;
+    }
+
+    td.code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: nowrap;
+      max-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .footer-text {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-top: 0.25rem;
+    }
+
+    .highlight {
+      animation: highlight 1s ease-out;
+    }
+
+    @keyframes highlight {
+      0% { background: rgba(34, 197, 94, 0.4); }
+      100% { background: transparent; }
+    }
+
+    input[type="text"] {
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.7);
+      padding: 0.45rem 0.8rem;
+      color: #e5e7eb;
+      min-width: 140px;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.8);
+      border-color: rgba(59, 130, 246, 0.9);
+    }
+
+    label {
+      font-size: 0.85rem;
+      opacity: 0.9;
+    }
+
+    @media (max-width: 600px) {
+      .card {
+        padding: 0.8rem;
+      }
+      h1 {
+        font-size: 1.3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h1>EVE LFP MB31 – QR bulk scanner</h1>
+          <div class="footer-text">
+            Scan al je cellen achter elkaar; elke unieke QR wordt opgeslagen, met upload naar Google Sheets.
+          </div>
+        </div>
+        <span class="badge">Batch documentatie</span>
+      </div>
+
+      <div class="batch-row">
+        <label for="batchInput">Batchnaam:</label>
+        <input id="batchInput" type="text" placeholder="bijv. Doos 1 – MB31" />
+        <button id="saveBatchBtn" class="secondary">💾 Batchnaam opslaan</button>
+        <span id="batchInfo" class="footer-text"></span>
+      </div>
+
+      <div class="controls">
+        <button id="startBtn">▶️ Scannen starten</button>
+        <button id="stopBtn" class="secondary" disabled>⏸️ Pauzeren</button>
+        <button id="clearBtn" class="secondary">🗑️ Alles wissen (lokaal)</button>
+        <button id="exportBtn">⬇️ Exporteer als CSV</button>
+      </div>
+
+      <div id="status" class="status">Status: <strong>nog niet gestart</strong></div>
+      <div id="counter" class="status ok">0 unieke QR-codes gescand (lokaal)</div>
+    </div>
+
+    <div class="card">
+      <div class="video-wrapper">
+        <video id="video" muted autoplay playsinline></video>
+        <div class="overlay"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <strong>Gescande codes (lokaal overzicht)</strong>
+          <div class="footer-text">Naast de upload naar Google Sheets, zie je hier een lokale log.</div>
+        </div>
+        <span class="pill" id="batchLabel">Batch: (nog niet ingesteld)</span>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Timestamp</</th>
+              <th>Batch</th>
+              <th>QR inhoud</th>
+            </tr>
+          </thead>
+          <tbody id="codesBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 👉 VUL HIER JE GOOGLE APPS SCRIPT WEB-APP URL IN
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxD6z7I1P5HTGdt69GftE5Z8jIihoo-ON1o4QlU28S2mjE4YvPscVWurme5O7hElvIQUw/exec";
+
+    const videoElem = document.getElementById("video");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const statusElem = document.getElementById("status");
+    const counterElem = document.getElementById("counter");
+    const codesBody = document.getElementById("codesBody");
+    const batchInput = document.getElementById("batchInput");
+    const saveBatchBtn = document.getElementById("saveBatchBtn");
+    const batchInfo = document.getElementById("batchInfo");
+    const batchLabelElem = document.getElementById("batchLabel");
+
+    let codeReader = null;
+    let currentStream = null;
+    let isScanning = false;
+    let codes = [];           // { value, time, index, batch }
+    let seen = new Set();     // unieke waarden
+    let currentBatch = "EVE LFP MB31";
+
+    function setStatus(text, type = "") {
+      statusElem.textContent = "Status: " + text;
+      statusElem.classList.remove("ok", "error", "warn");
+      if (type) statusElem.classList.add(type);
+    }
+
+    function updateCounter() {
+      counterElem.textContent = codes.length + " unieke QR-codes gescand (lokaal)";
+      counterElem.classList.add("ok");
+    }
+
+    function formatTimestamp(date) {
+      const pad = (n) => String(n).padStart(2, "0");
+      const yyyy = date.getFullYear();
+      const mm = pad(date.getMonth() + 1);
+      const dd = pad(date.getDate());
+      const hh = pad(date.getHours());
+      const mi = pad(date.getMinutes());
+      const ss = pad(date.getSeconds());
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+    }
+
+    function playBeep() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 1200; // hoge piep
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.08);
+      } catch (e) {
+        console.warn("Kon geen beep afspelen:", e);
+      }
+    }
+
+    function appendRow(entry) {
+      const tr = document.createElement("tr");
+      tr.classList.add("highlight");
+
+      const tdIndex = document.createElement("td");
+      tdIndex.textContent = entry.index;
+
+      const tdTime = document.createElement("td");
+      tdTime.textContent = entry.time;
+
+      const tdBatch = document.createElement("td");
+      tdBatch.textContent = entry.batch;
+
+      const tdCode = document.createElement("td");
+      tdCode.textContent = entry.value;
+      tdCode.classList.add("code");
+
+      tr.appendChild(tdIndex);
+      tr.appendChild(tdTime);
+      tr.appendChild(tdBatch);
+      tr.appendChild(tdCode);
+      codesBody.appendChild(tr);
+
+      setTimeout(() => tr.classList.remove("highlight"), 1000);
+    }
+
+    async function uploadToGoogleSheets(entry) {
+      if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("PASTE_YOUR_WEB_APP_URL_HERE")) {
+        setStatus("Upload naar Google Sheets nog niet geconfigureerd (SCRIPT URL ontbreekt).", "warn");
+        return;
+      }
+
+      try {
+        const payload = {
+          code: entry.value,
+          batch: entry.batch,
+          timestamp: entry.time,
+          source: "eve-mb31-qr-scanner"
+        };
+
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+          console.warn("Upload failed:", data);
+          setStatus("Scan opgeslagen, maar uploadfout (zie console).", "warn");
+        } else {
+          setStatus("Scan opgeslagen en geüpload naar Google Sheets.", "ok");
+        }
+      } catch (err) {
+        console.error("Fout bij upload:", err);
+        setStatus("Scan opgeslagen, maar kon niet naar Google Sheets uploaden.", "warn");
+      }
+    }
+
+    async function addCode(value) {
+      if (!currentBatch || currentBatch.trim() === "") {
+        setStatus("Stel eerst een batchnaam in voordat je gaat scannen.", "warn");
+        return;
+      }
+
+      if (seen.has(value + "::" + currentBatch)) {
+        setStatus("Dubbele code in deze batch, wordt overgeslagen.", "ok");
+        return;
+      }
+      seen.add(value + "::" + currentBatch);
+
+      const now = new Date();
+      const index = codes.length + 1;
+      const entry = {
+        value,
+        time: formatTimestamp(now),
+        index,
+        batch: currentBatch
+      };
+      codes.push(entry);
+      updateCounter();
+      appendRow(entry);
+      playBeep();
+      uploadToGoogleSheets(entry);
+    }
+
+    async function startScanner() {
+      if (isScanning) return;
+
+      try {
+        if (!codeReader) {
+          codeReader = new ZXing.BrowserMultiFormatReader();
+        }
+
+        if (!currentBatch || currentBatch.trim() === "") {
+          setStatus("Stel eerst een batchnaam in.", "warn");
+          return;
+        }
+
+        setStatus("Camera openen…");
+        const constraints = {
+          video: {
+            facingMode: { ideal: "environment" }
+          }
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        videoElem.srcObject = stream;
+
+        isScanning = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        setStatus("Scannen actief – richt de camera op een QR-code.", "ok");
+
+        codeReader.decodeFromVideoDevice(null, videoElem, (result, err) => {
+          if (result) {
+            const text = result.getText();
+            if (text) {
+              addCode(text);
+            }
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        setStatus("Kon camera niet openen: " + err.message, "error");
+      }
+    }
+
+    async function stopScanner() {
+      if (!isScanning) return;
+
+      isScanning = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+
+      setStatus("Gesloten. Je kunt later verder scannen door opnieuw te starten.");
+
+      if (codeReader) {
+        codeReader.reset();
+      }
+
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+    }
+
+    function clearAll() {
+      if (!confirm("Weet je zeker dat je alle lokaal gescande codes wilt wissen? Upload naar Sheets blijft staan.")) {
+        return;
+      }
+      codes = [];
+      seen.clear();
+      codesBody.innerHTML = "";
+      updateCounter();
+      setStatus("Lokale lijst geleegd. Data in Google Sheets blijft uiteraard staan.", "ok");
+    }
+
+    function exportCSV() {
+      if (codes.length === 0) {
+        alert("Nog geen codes om te exporteren.");
+        return;
+      }
+
+      const header = ["index", "timestamp", "batch", "code"];
+      const rows = codes.map(c => [c.index, c.time, c.batch, c.value]);
+
+      const escapeCSV = (value) => {
+        if (value == null) return "";
+        const s = String(value);
+        if (/[",;\n;]/.test(s)) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      };
+
+      let csv = header.map(escapeCSV).join(";") + "\n";
+      for (const row of rows) {
+        csv += row.map(escapeCSV).join(";") + "\n";
+      }
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const now = new Date();
+      const datePart = now.toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `eve-mb31-qr-scan-${datePart}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setStatus("CSV geëxporteerd (lokaal). Upload naar Sheets is al apart gedaan.", "ok");
+    }
+
+    function saveBatchName() {
+      const value = batchInput.value.trim();
+      if (!value) {
+        setStatus("Batchnaam mag niet leeg zijn.", "warn");
+        return;
+      }
+      currentBatch = value;
+      localStorage.setItem("eve_mb31_batchname", currentBatch);
+      batchInfo.textContent = "Batchnaam opgeslagen.";
+      batchLabelElem.textContent = "Batch: " + currentBatch;
+      setStatus("Batchnaam ingesteld op: " + currentBatch, "ok");
+    }
+
+    startBtn.addEventListener("click", startScanner);
+    stopBtn.addEventListener("click", stopScanner);
+    clearBtn.addEventListener("click", clearAll);
+    exportBtn.addEventListener("click", exportCSV);
+    saveBatchBtn.addEventListener("click", saveBatchName);
+
+    // Vorige batchnaam herstellen uit localStorage
+    (function initBatch() {
+      const stored = localStorage.getItem("eve_mb31_batchname");
+      if (stored) {
+        currentBatch = stored;
+        batchInput.value = stored;
+        batchLabelElem.textContent = "Batch: " + currentBatch;
+        batchInfo.textContent = "Batchnaam geladen uit vorige sessie.";
+      } else {
+        batchInput.value = currentBatch;
+        batchLabelElem.textContent = "Batch: " + currentBatch;
+      }
+    })();
+
+    // Info over HTTPS / camera
+    if (location.protocol !== "https:" && location.hostname !== "localhost") {
+      setStatus("Tip: host deze pagina via HTTPS (bijv. GitHub Pages / Netlify) voor beste camera-support.", "warn");
+    }
+  </script>
+</body>
+</html>
