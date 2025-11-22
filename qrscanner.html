@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <title>EVE LFP MB31 – QR Scanner (Advanced) V3</title>
+  <title>EVE LFP MB31 – QR Scanner (Advanced) V4</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ZXing library voor QR/barcode scanning -->
@@ -272,7 +272,7 @@
     <div class="card">
       <div class="card-header">
         <div>
-          <h1>EVE LFP MB31 – QR bulk scanner v3</h1>
+          <h1>EVE LFP MB31 – QR bulk scanner v4</h1>
           <div class="footer-text">
             Scan al je cellen achter elkaar; elke unieke QR wordt opgeslagen, met upload naar Google Sheets.
           </div>
@@ -421,7 +421,7 @@
       setTimeout(() => tr.classList.remove("highlight"), 1000);
     }
 
-    async function uploadToGoogleSheets(entry) {
+async function uploadToGoogleSheets(entry) {
   if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("PASTE_YOUR_WEB_APP_URL_HERE")) {
     setStatus("Upload naar Google Sheets nog niet geconfigureerd (SCRIPT URL ontbreekt).", "warn");
     return;
@@ -435,15 +435,17 @@
       source: "eve-mb31-qr-scanner"
     };
 
+    // Gebruik form-encoded body i.p.v. JSON + custom headers (voorkomt CORS-preflight)
+    const params = new URLSearchParams();
+    params.append("data", JSON.stringify(payload));
+
     const response = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+      body: params
+      // géén custom headers hier zetten, dan blijft het een 'simple request'
     });
 
-    const text = await response.text();  // lees altijd eerst de raw text
+    const text = await response.text();
 
     if (!response.ok) {
       setStatus("Upload HTTP-fout: " + response.status + " – " + text.slice(0, 80), "warn");
