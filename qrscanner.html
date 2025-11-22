@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <title>EVE LFP MB31 – QR Scanner (Advanced) V4</title>
+  <title>EVE LFP MB31 – QR Scanner (Advanced) V5</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ZXing library voor QR/barcode scanning -->
@@ -272,7 +272,7 @@
     <div class="card">
       <div class="card-header">
         <div>
-          <h1>EVE LFP MB31 – QR bulk scanner v4</h1>
+          <h1>EVE LFP MB31 – QR bulk scanner v5</h1>
           <div class="footer-text">
             Scan al je cellen achter elkaar; elke unieke QR wordt opgeslagen, met upload naar Google Sheets.
           </div>
@@ -509,7 +509,11 @@ async function startScanner() {
     if (!codeReader) {
       const hints = new Map();
       const formats = [ZXing.BarcodeFormat.QR_CODE];
+    
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      // 👉 Agressiever scannen, beter voor moeilijke / laag-contrast QR's
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    
       codeReader = new ZXing.BrowserMultiFormatReader(hints);
     }
 
