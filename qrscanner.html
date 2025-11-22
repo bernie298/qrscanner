@@ -422,43 +422,55 @@
     }
 
     async function uploadToGoogleSheets(entry) {
-      if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("PASTE_YOUR_WEB_APP_URL_HERE")) {
-        setStatus("Upload naar Google Sheets nog niet geconfigureerd (SCRIPT URL ontbreekt).", "warn");
-        return;
-      }
+  if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("https://script.google.com/macros/s/AKfycbxD6z7I1P5HTGdt69GftE5Z8jIihoo-ON1o4QlU28S2mjE4YvPscVWurme5O7hElvIQUw/exec")) {
+    setStatus("Upload naar Google Sheets nog niet geconfigureerd (SCRIPT URL ontbreekt).", "warn");
+    return;
+  }
 
-      try {
-        const payload = {
-          code: entry.value,
-          batch: entry.batch,
-          timestamp: entry.time,
-          source: "eve-mb31-qr-scanner"
-        };
+  try {
+    const payload = {
+      code: entry.value,
+      batch: entry.batch,
+      timestamp: entry.time,
+      source: "eve-mb31-qr-scanner"
+    };
 
-        const response = await fetch(GOOGLE_SCRIPT_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
 
-        if (!response.ok) {
-          throw new Error("HTTP " + response.status);
-        }
+    const text = await response.text();  // lees altijd eerst de raw text
 
-        const data = await response.json();
-        if (!data.success) {
-          console.warn("Upload failed:", data);
-          setStatus("Scan opgeslagen, maar uploadfout (zie console).", "warn");
-        } else {
-          setStatus("Scan opgeslagen en geüpload naar Google Sheets.", "ok");
-        }
-      } catch (err) {
-        console.error("Fout bij upload:", err);
-        setStatus("Scan opgeslagen, maar kon niet naar Google Sheets uploaden.", "warn");
-      }
+    if (!response.ok) {
+      setStatus("Upload HTTP-fout: " + response.status + " – " + text.slice(0, 80), "warn");
+      console.error("HTTP error response:", text);
+      return;
     }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      setStatus("Upload antwoord is geen geldige JSON: " + text.slice(0, 80), "warn");
+      console.error("JSON parse error:", e, text);
+      return;
+    }
+
+    if (!data.success) {
+      console.warn("Upload failed:", data);
+      setStatus("Upload naar Sheets gaf een fout: " + (data.error || "onbekend"), "warn");
+    } else {
+      setStatus("Scan opgeslagen en geüpload naar Google Sheets.", "ok");
+    }
+  } catch (err) {
+    console.error("Fout bij upload:", err);
+    setStatus("Kon niet naar Google Sheets uploaden: " + err.message, "warn");
+  }
+}
 
     async function addCode(value) {
       if (!currentBatch || currentBatch.trim() === "") {
@@ -487,48 +499,64 @@
       uploadToGoogleSheets(entry);
     }
 
-    async function startScanner() {
-      if (isScanning) return;
+async function startScanner() {
+  if (isScanning) return;
 
-      try {
-        if (!codeReader) {
-          codeReader = new ZXing.BrowserMultiFormatReader();
-        }
-
-        if (!currentBatch || currentBatch.trim() === "") {
-          setStatus("Stel eerst een batchnaam in.", "warn");
-          return;
-        }
-
-        setStatus("Camera openen…");
-        const constraints = {
-          video: {
-            facingMode: { ideal: "environment" }
-          }
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        currentStream = stream;
-        videoElem.srcObject = stream;
-
-        isScanning = true;
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-
-        setStatus("Scannen actief – richt de camera op een QR-code.", "ok");
-
-        codeReader.decodeFromVideoDevice(null, videoElem, (result, err) => {
-          if (result) {
-            const text = result.getText();
-            if (text) {
-              addCode(text);
-            }
-          }
-        });
-      } catch (err) {
-        console.error(err);
-        setStatus("Kon camera niet openen: " + err.message, "error");
-      }
+  try {
+    // Alleen QR-codes, dat maakt 'm vaak een stuk sneller & stabieler
+    if (!codeReader) {
+      const hints = new Map();
+      const formats = [ZXing.BarcodeFormat.QR_CODE];
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+      codeReader = new ZXing.BrowserMultiFormatReader(hints);
     }
+
+    if (!currentBatch || currentBatch.trim() === "") {
+      setStatus("Stel eerst een batchnaam in.", "warn");
+      return;
+    }
+
+    setStatus("Camera openen…");
+
+    const constraints = {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    currentStream = stream;
+    videoElem.srcObject = stream;
+
+    isScanning = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    setStatus("Scannen actief – richt de camera op een QR-code.", "ok");
+
+    let lastText = null;
+    let lastScanTime = 0;
+
+    codeReader.decodeFromVideoDevice(null, videoElem, (result, err) => {
+      if (result) {
+        const text = result.getText();
+        const now = Date.now();
+
+        // voorkom dat één code 10x achter elkaar wordt verwerkt
+        if (text && (text !== lastText || now - lastScanTime > 1000)) {
+          lastText = text;
+          lastScanTime = now;
+          addCode(text);
+        }
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    setStatus("Kon camera niet openen: " + err.message, "error");
+  }
+}
 
     async function stopScanner() {
       if (!isScanning) return;
